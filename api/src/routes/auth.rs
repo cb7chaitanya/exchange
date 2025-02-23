@@ -22,6 +22,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("/auth")
             .route("/login", web::post().to(login))
             .route("/signup", web::post().to(signup))
+            .route("/logout", web::post().to(logout))
     );
 }
 
@@ -126,4 +127,17 @@ async fn signup(
                 .finish()
         )
         .json(json!({ "message": "Signup successful" }))
+}
+
+async fn logout() -> impl Responder {
+    HttpResponse::Ok()
+        .cookie(
+            Cookie::build("token", "")
+                .http_only(true)
+                .secure(true)
+                .path("/")
+                .expires(actix_web::cookie::time::OffsetDateTime::now_utc())  // Expire immediately
+                .finish()
+        )
+        .json(json!({ "message": "Logout successful" }))
 }

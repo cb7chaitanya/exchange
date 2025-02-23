@@ -16,3 +16,4 @@ bcrypt = "0.15"
 jsonwebtoken = "9.2"
 chrono = "0.4.39"
 uuid = { version = "1.0", features = ["v4", "serde"] }
+actix-cors = "0.6"
