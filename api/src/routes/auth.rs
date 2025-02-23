@@ -27,7 +27,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 async fn login(
     pool: web::Data<DbPool>,
-    form: web::Form<LoginForm>
+    form: web::Json<LoginForm>
 ) -> impl Responder {
     if let Err(e) = form.validate() {
         return HttpResponse::BadRequest().json(e);
@@ -74,7 +74,10 @@ async fn login(
     }
 }
 
-async fn signup(pool: web::Data<DbPool>, form: web::Form<SignupForm>) -> impl Responder {
+async fn signup(
+    pool: web::Data<DbPool>,
+    form: web::Json<SignupForm>
+) -> impl Responder {
     if let Err(e) = form.validate() {
         return HttpResponse::BadRequest().json(e);
     }
