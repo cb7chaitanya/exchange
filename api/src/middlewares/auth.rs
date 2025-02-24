@@ -1,7 +1,7 @@
 use actix_web::body::EitherBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use std::future::{ready, Ready};
-use actix_web::{dev, dev::Service, dev::Transform, Error, HttpResponse, web::Data};
+use actix_web::{dev, dev::Service, dev::Transform, Error, HttpResponse, web::Data, HttpMessage};
 use futures_util::future::LocalBoxFuture;
 use db::DbPool;
 use log::info;
@@ -34,16 +34,17 @@ where
             let res = self.service.call(req);
             Box::pin(async move { res.await.map(ServiceResponse::map_into_left_body) })
         } else {
-            if get_user_from_jwt(&req, pool).is_none() {
+            if let Some(user) = get_user_from_jwt(&req, pool) {
+                req.extensions_mut().insert(user.id.to_string());
+                let res = self.service.call(req);
+                Box::pin(async move { res.await.map(ServiceResponse::map_into_left_body) })
+            } else {
                 let (request, _pl) = req.into_parts();
                 let response = HttpResponse::Unauthorized()
                     .json(serde_json::json!({ "error": "Unauthorized" }))
                     .map_into_right_body();
 
                 Box::pin(async { Ok(ServiceResponse::new(request, response)) })
-            } else {
-                let res = self.service.call(req);
-                Box::pin(async move { res.await.map(ServiceResponse::map_into_left_body) })
             }
         }
     }
