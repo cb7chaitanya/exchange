@@ -3,6 +3,8 @@ use redis::{Client, RedisResult, Commands};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use serde_json;
+use crate::types::ws::WsMessage;
+use crate::types::api::MessageToApi;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DbMessage {
@@ -57,15 +59,15 @@ impl RedisManager {
         conn.lpush("db_processor", message_json)
     }
 
-    pub fn publish_message(&self, message: DbMessage) -> RedisResult<()> {
+    pub fn publish_message(&self, channel: &str, message: WsMessage) -> RedisResult<()> {
         let message_json = serde_json::to_string(&message).unwrap();
         let mut conn = self.redis_client.get_connection()?;
-        conn.publish("db_processor", message_json)
+        conn.publish(channel, message_json)
     }
 
-    pub fn send_to_api(&self, message: DbMessage) -> RedisResult<()> {
+    pub fn send_to_api(&self, client_id: &str, message: MessageToApi) -> RedisResult<()> {
         let message_json = serde_json::to_string(&message).unwrap();
         let mut conn = self.redis_client.get_connection()?;
-        conn.publish("api_processor", message_json)
+        conn.publish(client_id, message_json)
     }
 }

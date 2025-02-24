@@ -4,7 +4,7 @@ use crate::redis::redis_manager::OrderSide;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fill {
     pub qty: f64,
-    pub price: String,
+    pub price: f64,
     pub trade_id: i64,
     pub marker_order_id: String,
     pub other_user_id: String,
@@ -154,7 +154,7 @@ impl Orderbook {
                 bid.filled += amount_remaining;
                 
                 fills.push(Fill {
-                    price: bid.price.to_string(),
+                    price: bid.price,
                     qty: amount_remaining,
                     trade_id: {
                         self.last_trade_id += 1;
@@ -181,7 +181,7 @@ impl Orderbook {
                 ask.filled += filled_qty;
 
                 fills.push(Fill {
-                    price: ask.price.to_string(),
+                    price: ask.price,
                     qty: filled_qty,
                     trade_id: {
                         self.last_trade_id += 1;
