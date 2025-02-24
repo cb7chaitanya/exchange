@@ -2,11 +2,14 @@ use actix_web::{web, App, HttpServer, middleware, http::header};
 use actix_cors::Cors;
 use std::io;
 use routes::auth::config as auth_config;
+use routes::order::config as order_config;
 use db::establish_connection_pool;
 
 mod routes;
 mod types;
-
+mod redis;
+mod middlewares;
+mod utils;
 #[actix_web::main]
 async fn main() -> io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
@@ -37,6 +40,7 @@ async fn main() -> io::Result<()> {
             .service(
                 web::scope("/api/v1")
                     .configure(auth_config)
+                    .configure(order_config)
             )
     })
     .bind(("0.0.0.0", 8080))?

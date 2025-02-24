@@ -10,6 +10,7 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use chrono::Utc;
+use crate::utils::web_utils::get_jwt_secret;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
@@ -45,11 +46,10 @@ async fn login(
                         sub: user.id.to_string(),
                         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
                     };
-
                     let token = encode(
                         &Header::default(),
                         &claims,
-                        &EncodingKey::from_secret("your-secret-key".as_ref())
+                        &EncodingKey::from_secret(get_jwt_secret().as_bytes())
                     ).unwrap();
 
                     HttpResponse::Ok()
@@ -116,7 +116,7 @@ async fn signup(
     let token = encode(
         &Header::default(),
         &Claims { sub: new_user.id.to_string(), exp: (Utc::now() + chrono::Duration::hours(24)).timestamp() as usize },
-        &EncodingKey::from_secret("your-secret-key".as_ref())
+        &EncodingKey::from_secret(get_jwt_secret().as_bytes())
     ).unwrap();
 
     HttpResponse::Ok()
