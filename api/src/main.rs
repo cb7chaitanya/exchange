@@ -3,6 +3,7 @@ use actix_cors::Cors;
 use std::io;
 use routes::auth::config as auth_config;
 use routes::order::config as order_config;
+use routes::depth::config as depth_config;
 use db::establish_connection_pool;
 
 mod routes;
@@ -41,6 +42,7 @@ async fn main() -> io::Result<()> {
                 web::scope("/api/v1")
                     .configure(auth_config)
                     .configure(order_config)
+                    .configure(depth_config)
             )
     })
     .bind(("0.0.0.0", 8080))?
