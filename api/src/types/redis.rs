@@ -66,7 +66,7 @@ pub struct OpenOrder {
     pub user_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderSide {
     Buy,
