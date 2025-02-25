@@ -139,7 +139,7 @@ impl Engine {
                                     self.send_updated_depth_at(price, &market);
                                 }
                             } else {
-                                if let Ok(_price) = orderbook.cancel_ask(&order_id) {
+                                if let Ok(price) = orderbook.cancel_ask(&order_id) {
                                     let left_quantity = order.quantity - order.filled;
                                     if let Some(balance) = self.balances.get_mut(&order.user_id) {
                                         if let Some(asset_balance) = balance.get_mut(quote_asset) {
@@ -147,7 +147,7 @@ impl Engine {
                                             asset_balance.locked -= left_quantity;
                                         }
                                     }
-                                    // TODO: send_updated_depth_at(price, &market);
+                                    self.send_updated_depth_at(price, &market);
                                 }
                             }
                         }
