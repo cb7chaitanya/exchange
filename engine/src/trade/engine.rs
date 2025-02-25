@@ -94,7 +94,7 @@ impl Engine {
         }
     }
 
-    pub fn process(&mut self, message: MessageFromApi, user_id: &str) {
+    pub fn process(&mut self, message: MessageFromApi) {
         match message {
             MessageFromApi::CreateOrder { market, price, quantity, side, user_id } => {
                 match self.create_order(&market, &price, &quantity, side, &user_id) {
@@ -122,13 +122,13 @@ impl Engine {
                 }
             }
 
-            MessageFromApi::CancelOrder { order_id, market } => {
+            MessageFromApi::CancelOrder { order_id, market, .. } => {
                 if let Some(orderbook) = self.orderbooks.iter_mut().find(|o| o.ticker() == market) {
                     match orderbook.get_open_orders(&order_id).first() {
                         Some(order) => {
                             let quote_asset = market.split('_').nth(1).unwrap_or(BASE_CURRENCY);
                             if order.side == OrderSide::Buy {
-                                if let Ok(_price) = orderbook.cancel_bid(&order_id) {
+                                if let Ok(price) = orderbook.cancel_bid(&order_id) {
                                     let left_quantity = (order.quantity - order.filled) * order.price;
                                     if let Some(balance) = self.balances.get_mut(&order.user_id) {
                                         if let Some(asset_balance) = balance.get_mut(BASE_CURRENCY) {
@@ -136,7 +136,7 @@ impl Engine {
                                             asset_balance.locked -= left_quantity;
                                         }
                                     }
-                                    // TODO: send_updated_depth_at(price, &market);
+                                    self.send_updated_depth_at(price, &market);
                                 }
                             } else {
                                 if let Ok(_price) = orderbook.cancel_ask(&order_id) {
@@ -173,7 +173,7 @@ impl Engine {
                 self.on_ramp(&user_id, amount);
             }
 
-            MessageFromApi::GetDepth { market } => {
+            MessageFromApi::GetDepth { market, user_id } => {
                 if let Some(orderbook) = self.orderbooks.iter().find(|o| o.ticker() == market) {
                     let depth = orderbook.get_depth();
                     RedisManager::get_instance().lock().unwrap().send_to_api(

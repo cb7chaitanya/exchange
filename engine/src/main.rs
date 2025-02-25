@@ -20,7 +20,7 @@ async fn main() {
             if let Some(message_str) = response {
                 if let Ok(message) = serde_json::from_str::<MessageFromApi>(&message_str) {
                     let mut engine = engine.lock().unwrap();
-                    engine.process(message, "default_user"); // TODO: Get user_id from message
+                    engine.process(message);
                 }
             }
         }

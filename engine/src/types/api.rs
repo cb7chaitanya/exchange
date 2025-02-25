@@ -20,6 +20,7 @@ pub enum MessageFromApi {
     CancelOrder {
         order_id: String,
         market: String,
+        user_id: String,
     },
     
     #[serde(rename = "ON_RAMP")]
@@ -32,6 +33,7 @@ pub enum MessageFromApi {
     #[serde(rename = "GET_DEPTH")]
     GetDepth {
         market: String,
+        user_id: String,
     },
     
     #[serde(rename = "GET_OPEN_ORDERS")]
