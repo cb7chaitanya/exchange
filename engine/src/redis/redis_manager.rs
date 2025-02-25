@@ -70,4 +70,9 @@ impl RedisManager {
         let mut conn = self.redis_client.get_connection()?;
         conn.publish(client_id, message_json)
     }
+
+    pub fn pop_message(&self) -> redis::RedisResult<Option<String>> {
+        let mut conn = self.redis_client.get_connection()?;
+        redis::cmd("RPOP").arg("messages").query(&mut conn)
+    }
 }

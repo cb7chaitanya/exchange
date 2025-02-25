@@ -69,6 +69,7 @@ impl Engine {
         engine
     }
 
+    #[allow(dead_code)]
     pub fn save_snapshot(&self) {
         let snapshot = serde_json::json!({
             "orderbooks": self.orderbooks.iter().map(|o| o.get_snapshot()).collect::<Vec<_>>(),
@@ -195,6 +196,7 @@ impl Engine {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_orderbook(&mut self, orderbook: Orderbook) {
         self.orderbooks.push(orderbook);
     }
@@ -417,6 +419,7 @@ impl Engine {
         conn.publish_message(&format!("depth@{}", market), message);
     }
     
+    #[allow(dead_code)]
     fn send_updated_depth_at(&mut self, price: f64, market: &str) {
         let orderbook = match self.orderbooks.iter().find(|o| o.ticker() == market) {
             Some(ob) => ob,

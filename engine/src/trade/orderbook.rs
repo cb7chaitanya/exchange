@@ -50,6 +50,7 @@ impl Orderbook {
         format!("{}_INR", self.base_asset)
     }
 
+    #[allow(dead_code)]
     pub fn get_snapshot(&self) -> Orderbook {
         let snapshot = Orderbook {
             base_asset: self.base_asset.clone(),
