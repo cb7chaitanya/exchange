@@ -128,7 +128,7 @@ impl Engine {
                         Some(order) => {
                             let quote_asset = market.split('_').nth(1).unwrap_or(BASE_CURRENCY);
                             if order.side == OrderSide::Buy {
-                                if let Ok(price) = orderbook.cancel_bid(&order_id) {
+                                if let Ok(_price) = orderbook.cancel_bid(&order_id) {
                                     let left_quantity = (order.quantity - order.filled) * order.price;
                                     if let Some(balance) = self.balances.get_mut(&order.user_id) {
                                         if let Some(asset_balance) = balance.get_mut(BASE_CURRENCY) {
@@ -139,7 +139,7 @@ impl Engine {
                                     // TODO: send_updated_depth_at(price, &market);
                                 }
                             } else {
-                                if let Ok(price) = orderbook.cancel_ask(&order_id) {
+                                if let Ok(_price) = orderbook.cancel_ask(&order_id) {
                                     let left_quantity = order.quantity - order.filled;
                                     if let Some(balance) = self.balances.get_mut(&order.user_id) {
                                         if let Some(asset_balance) = balance.get_mut(quote_asset) {
@@ -303,17 +303,21 @@ impl Engine {
             quantity: Some(order.quantity.to_string()),
             side: Some(order.side.clone()),
         };
-        conn.push_message(message);
+        if let Err(e) = conn.push_message(message) {
+            println!("Failed to push order update: {}", e);
+        }
 
         for fill in fills {
-            conn.push_message(DbMessage::OrderUpdate {
+            if let Err(e) = conn.push_message(DbMessage::OrderUpdate {
                 order_id: fill.marker_order_id.clone(),
                 executed_qty: fill.qty,
                 market: None,
                 price: None,
                 quantity: None,
                 side: None,
-            });
+            }) {
+                println!("Failed to push order update: {}", e);
+            }
         }
     }
 
@@ -333,7 +337,9 @@ impl Engine {
                     .unwrap()
                     .as_millis() as i64,
             };
-            conn.push_message(message);
+            if let Err(e) = conn.push_message(message) {
+                println!("Failed to push trade update: {}", e);
+            }
         }
     }
 
@@ -352,7 +358,9 @@ impl Engine {
                 }),
             };
 
-            conn.publish_message(&format!("trade@{}", market), message);
+            if let Err(e) = conn.publish_message(&format!("trade@{}", market), message) {
+                println!("Failed to publish trade update: {}", e);
+            }
         }
     }
 
@@ -416,7 +424,9 @@ impl Engine {
 
         println!("publish ws depth updates");
         let conn = RedisManager::get_instance().lock().unwrap();
-        conn.publish_message(&format!("depth@{}", market), message);
+        if let Err(e) = conn.publish_message(&format!("depth@{}", market), message) {
+            println!("Failed to publish depth update: {}", e);
+        }
     }
     
     #[allow(dead_code)]
@@ -449,7 +459,9 @@ impl Engine {
         };
 
         let conn = RedisManager::get_instance().lock().unwrap();
-        conn.publish_message(&format!("depth@{}", market), message);
+        if let Err(e) = conn.publish_message(&format!("depth@{}", market), message) {
+            println!("Failed to publish depth update: {}", e);
+        }
     }
 
     fn update_balance(

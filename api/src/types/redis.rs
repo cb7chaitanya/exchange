@@ -1,10 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-pub const CREATE_ORDER: &str = "CREATE_ORDER";
-pub const CANCEL_ORDER: &str = "CANCEL_ORDER";
-pub const ON_RAMP: &str = "ON_RAMP";
-pub const GET_OPEN_ORDERS: &str = "GET_OPEN_ORDERS";
-pub const GET_DEPTH: &str = "GET_DEPTH";
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]

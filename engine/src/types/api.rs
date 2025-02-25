@@ -3,11 +3,6 @@ use crate::redis::redis_manager::OrderSide;
 use crate::trade::orderbook::Order;
 use crate::trade::orderbook::Fill;
 
-pub const CREATE_ORDER: &str = "CREATE_ORDER";
-pub const CANCEL_ORDER: &str = "CANCEL_ORDER";
-pub const ON_RAMP: &str = "ON_RAMP";
-pub const GET_DEPTH: &str = "GET_DEPTH";
-pub const GET_OPEN_ORDERS: &str = "GET_OPEN_ORDERS";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
