@@ -1,6 +1,30 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    orders (id) {
+        id -> Uuid,
+        executed_qty -> Numeric,
+        market -> Varchar,
+        price -> Varchar,
+        quantity -> Varchar,
+        side -> Varchar,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    trades (id) {
+        id -> Uuid,
+        is_buyer_maker -> Bool,
+        price -> Varchar,
+        quantity -> Varchar,
+        quote_quantity -> Varchar,
+        timestamp -> Timestamp,
+        market -> Varchar,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Uuid,
         username -> Varchar,
@@ -10,3 +34,9 @@ diesel::table! {
         updated_at -> Timestamp,
     }
 }
+
+diesel::allow_tables_to_appear_in_same_query!(
+    orders,
+    trades,
+    users,
+);

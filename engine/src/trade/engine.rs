@@ -6,7 +6,7 @@ use std::env;
 use serde_json;
 use crate::types::api::{MessageFromApi, MessageToApi};
 use crate::redis::redis_manager::RedisManager;
-use crate::redis::redis_manager::{OrderSide, DbMessage};
+use crate::redis::redis_manager::{DbMessage, OrderMessage, TradeMessage, OrderSide};
 use rand::{thread_rng, Rng, distributions::Alphanumeric};
 use crate::types::ws::{WsMessage, WsMessageData, TradeData, DepthData};
 
@@ -295,27 +295,28 @@ impl Engine {
 
     fn update_db_orders(&mut self, order: &Order, executed_qty: f64, fills: &Vec<Fill>, market: &str) {
         let conn = RedisManager::get_instance().lock().unwrap();
-        let message = DbMessage::OrderUpdate {
+        let message = DbMessage::OrderUpdate(OrderMessage {
             order_id: order.order_id.clone(),
             executed_qty,
             market: Some(market.to_string()),
             price: Some(order.price.to_string()),
             quantity: Some(order.quantity.to_string()),
             side: Some(order.side.clone()),
-        };
+        });
+
         if let Err(e) = conn.push_message(message) {
             println!("Failed to push order update: {}", e);
         }
 
         for fill in fills {
-            if let Err(e) = conn.push_message(DbMessage::OrderUpdate {
+            if let Err(e) = conn.push_message(DbMessage::OrderUpdate(OrderMessage {
                 order_id: fill.marker_order_id.clone(),
                 executed_qty: fill.qty,
                 market: None,
                 price: None,
                 quantity: None,
                 side: None,
-            }) {
+            })) {
                 println!("Failed to push order update: {}", e);
             }
         }
@@ -324,19 +325,20 @@ impl Engine {
     fn create_db_trades(&mut self, fills: &Vec<Fill>, market: &str, user_id: &str) {
         for fill in fills {
             let conn = RedisManager::get_instance().lock().unwrap();
-            let quote_qty = fill.qty * fill.price; 
-            let message = DbMessage::TradeAdded { 
-                id: fill.trade_id.to_string(), 
-                is_buyer_maker: fill.other_user_id == user_id, 
-                price: fill.price.to_string(), 
-                quantity: fill.qty.to_string(), 
-                market: market.to_string(),
+            let quote_qty = fill.qty * fill.price;
+            let message = DbMessage::TradeAdded(TradeMessage {
+                id: fill.trade_id.to_string(),
+                is_buyer_maker: fill.other_user_id == user_id,
+                price: fill.price.to_string(),
+                quantity: fill.qty.to_string(),
                 quote_quantity: quote_qty.to_string(),
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_millis() as i64,
-            };
+                market: market.to_string(),
+            });
+
             if let Err(e) = conn.push_message(message) {
                 println!("Failed to push trade update: {}", e);
             }

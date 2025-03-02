@@ -5,26 +5,35 @@ use once_cell::sync::Lazy;
 use serde_json;
 use crate::types::ws::WsMessage;
 use crate::types::api::MessageToApi;
+use std::env;
+use dotenv::dotenv;
+use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DbMessage {
-    TradeAdded {
-        id: String,
-        is_buyer_maker: bool,
-        price: String,
-        quantity: String,
-        quote_quantity: String,
-        timestamp: i64,
-        market: String,
-    },
-    OrderUpdate {
-        order_id: String,
-        executed_qty: f64,
-        market: Option<String>,
-        price: Option<String>,
-        quantity: Option<String>,
-        side: Option<OrderSide>,
-    },
+    TradeAdded(TradeMessage),
+    OrderUpdate(OrderMessage),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct TradeMessage {
+    pub id: String,
+    pub is_buyer_maker: bool,
+    pub price: String,
+    pub quantity: String,
+    pub quote_quantity: String,
+    pub timestamp: i64,
+    pub market: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderMessage {
+    pub order_id: String,
+    pub executed_qty: f64,
+    pub market: Option<String>,
+    pub price: Option<String>,
+    pub quantity: Option<String>,
+    pub side: Option<OrderSide>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -43,7 +52,16 @@ pub struct RedisManager {
 
 impl RedisManager {
     pub fn new() -> Self {
-        let redis_client = Client::open("redis://localhost:6379").unwrap();
+        dotenv().ok(); // Load .env file if it exists
+        
+        let redis_url = env::var("REDIS_URL")
+            .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+        
+        let redis_client = Client::open(redis_url.as_str())
+            .expect("Failed to create Redis client");
+            
+        println!("Connected to Redis at {}", redis_url);
+        
         Self {
             redis_client,
         }

@@ -13,7 +13,6 @@ mod trade;
 async fn main() {
     let engine = Arc::new(Mutex::new(Engine::new()));
     let redis_client = RedisManager::get_instance();
-    println!("connected to redis");
 
     loop {
         if let Ok(response) = redis_client.lock().unwrap().pop_message() {
