@@ -99,8 +99,7 @@ pub struct CreateOrderData {
     pub price: String,
     pub quantity: String,
     #[serde(rename = "side")]
-    pub side: OrderSide,
-    pub user_id: String,
+    pub side: OrderSide
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -123,7 +122,6 @@ pub struct GetDepthData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetOpenOrdersData {
-    pub user_id: String,
     pub market: String,
 }
 

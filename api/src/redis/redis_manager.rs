@@ -8,8 +8,9 @@ use rand::distributions::Alphanumeric;
 use log::info;
 
 #[derive(Serialize, Debug)]
-struct MessageWithId<'a> {
-    client_id: &'a String,
+struct MessageWrapper {
+    client_id: String,
+    user_id: String,
     message: MessageToEngine,
 }
 
@@ -41,7 +42,7 @@ impl RedisManager {
             .collect()
     }
 
-    pub async fn send_and_await(&self, message: MessageToEngine) -> RedisResult<MessageFromOrderbook> {
+    pub async fn send_and_await(&self, message: MessageToEngine, user_id: String) -> RedisResult<MessageFromOrderbook> {
         info!("Sending message to engine: {:?}", message);
         let mut conn = self.client.get_connection()?;
         let mut pub_conn = self.publisher.get_connection()?;
@@ -54,12 +55,13 @@ impl RedisManager {
         pubsub.subscribe(&client_id)?;
         info!("Subscribed to channel: {}", client_id);
 
-        let message_with_id = MessageWithId {
-            client_id: &client_id,
+        let message_wrapper = MessageWrapper {
+            client_id: client_id.clone(),
+            user_id,
             message,
         };
-        info!("Message with ID: {:?}", message_with_id);
-        let _: () = pub_conn.lpush("messages", serde_json::to_string(&message_with_id).expect("Failed to serialize message"))?;
+        info!("Message with ID: {:?}", message_wrapper);
+        let _: () = pub_conn.lpush("messages", serde_json::to_string(&message_wrapper).expect("Failed to serialize message"))?;
         info!("Pushed message to Redis");
         info!("Waiting for response on channel: {}", client_id);
         let msg = pubsub.get_message()?;

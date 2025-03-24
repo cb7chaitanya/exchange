@@ -19,6 +19,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 pub async fn get_depth(
     path: web::Path<MarketPath>,
+    user_id: web::ReqData<String>,
 ) -> impl Responder {
     let market = path.into_inner().market;
     info!("Getting depth for market: {:?}", market);
@@ -30,7 +31,7 @@ pub async fn get_depth(
         },
     };
 
-    match redis_manager.send_and_await(message).await {
+    match redis_manager.send_and_await(message, user_id.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(_) => HttpResponse::InternalServerError().finish()
     }

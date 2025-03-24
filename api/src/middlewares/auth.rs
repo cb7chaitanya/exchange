@@ -24,7 +24,6 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let path = req.path().to_string();
-        info!("Requested path: {}", path);
 
         let pool = req.app_data::<Data<DbPool>>().expect("DB Pool not found");
 

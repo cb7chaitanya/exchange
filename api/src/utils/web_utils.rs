@@ -19,32 +19,15 @@ pub struct Claims {
 }
 
 pub fn get_user_from_jwt(req: &ServiceRequest, pool: &web::Data<DbPool>) -> Option<User> {
-    info!("Getting user from JWT");
-    
-    // Log all cookies
-    if let Ok(cookies) = req.cookies() {
-        info!("All cookies in request:");
-        for cookie in cookies.iter() {
-            info!("  {} = {}", cookie.name(), cookie.value());
-        }
-    } else {
-        info!("No cookies found in request");
-    }
-    
     let cookie = req.cookie("token")?;
     let token = cookie.value();
-    info!("Token: {}", token);
     let decoding_key = DecodingKey::from_secret(get_jwt_secret().as_bytes());
     let validation = Validation::default();
-    info!("Validation: {:?}", validation);
     let token_data = decode::<Claims>(token, &decoding_key, &validation).ok()?;
-    info!("Token data: {:?}", token_data);
     let user_id = Uuid::parse_str(&token_data.claims.sub).ok()?;
-    info!("User ID: {}", user_id);
     let conn = &mut pool.get().expect("Failed to get DB connection");
     match users.filter(id.eq(user_id)).first::<User>(conn) {
         Ok(user) => {
-            info!("User found: {}", user.id);
             Some(user)
         }
         Err(_) => {
