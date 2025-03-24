@@ -52,13 +52,14 @@ async fn login(
                         &EncodingKey::from_secret(get_jwt_secret().as_bytes())
                     ).unwrap();
 
+                    let cookie = Cookie::build("token", token)
+                        .path("/api/v1")
+                        .secure(true)
+                        .http_only(true)
+                        .finish();
+
                     HttpResponse::Ok()
-                        .cookie(
-                            Cookie::build("token", token)
-                                .http_only(true)
-                                .secure(true)
-                                .finish()
-                        )
+                        .cookie(cookie)
                         .json(json!({ "message": "Login successful" }))
                 },
                 _ => {
@@ -119,13 +120,14 @@ async fn signup(
         &EncodingKey::from_secret(get_jwt_secret().as_bytes())
     ).unwrap();
 
+    let cookie = Cookie::build("token", token)
+        .path("/api/v1")
+        .secure(true)
+        .http_only(true)
+        .finish();
+
     HttpResponse::Ok()
-        .cookie(
-            Cookie::build("token", token)
-                .http_only(true)
-                .secure(true)
-                .finish()
-        )
+        .cookie(cookie)
         .json(json!({ "message": "Signup successful" }))
 }
 

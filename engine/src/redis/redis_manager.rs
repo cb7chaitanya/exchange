@@ -8,6 +8,7 @@ use crate::types::api::MessageToApi;
 use std::env;
 use dotenv::dotenv;
 use validator::Validate;
+use log::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DbMessage {
@@ -43,24 +44,28 @@ pub enum OrderSide {
 }
 
 static INSTANCE: Lazy<Mutex<RedisManager>> = Lazy::new(|| {
+    info!("Creating new RedisManager instance");
     Mutex::new(RedisManager::new())
 });
 
+#[derive(Debug)]
 pub struct RedisManager {
     redis_client: Client,
 }
 
 impl RedisManager {
     pub fn new() -> Self {
-        dotenv().ok(); // Load .env file if it exists
+        info!("Initializing new RedisManager");
+        dotenv().ok();
         
         let redis_url = env::var("REDIS_URL")
             .unwrap_or_else(|_| "redis://localhost:6379".to_string());
         
+        info!("Connecting to Redis at {}", redis_url);
         let redis_client = Client::open(redis_url.as_str())
             .expect("Failed to create Redis client");
             
-        println!("Connected to Redis at {}", redis_url);
+        info!("Successfully created Redis client");
         
         Self {
             redis_client,
@@ -68,6 +73,7 @@ impl RedisManager {
     }
 
     pub fn get_instance() -> &'static Mutex<RedisManager> {
+        info!("Getting Redis instance");
         &INSTANCE
     }
 
@@ -84,13 +90,49 @@ impl RedisManager {
     }
 
     pub fn send_to_api(&self, client_id: &str, message: MessageToApi) -> RedisResult<()> {
+        info!("Attempting to send message to API for client: {}", client_id);
         let message_json = serde_json::to_string(&message).unwrap();
-        let mut conn = self.redis_client.get_connection()?;
-        conn.publish(client_id, message_json)
+        info!("Serialized message: {}", message_json);
+        let mut conn = match self.redis_client.get_connection() {
+            Ok(conn) => {
+                info!("Got Redis connection successfully");
+                conn
+            },
+            Err(e) => {
+                info!("Failed to get Redis connection: {:?}", e);
+                return Err(e);
+            }
+        };
+        match conn.publish(client_id, message_json) {
+            Ok(result) => {
+                info!("Successfully published to Redis, result: {:?}", result);
+                Ok(result)
+            },
+            Err(e) => {
+                info!("Failed to publish to Redis: {:?}", e);
+                Err(e)
+            }
+        }
     }
 
     pub fn pop_message(&self) -> redis::RedisResult<Option<String>> {
+        info!("Popping message from Redis queue 'messages'");
         let mut conn = self.redis_client.get_connection()?;
-        redis::cmd("RPOP").arg("messages").query(&mut conn)
+        info!("Connected to Redis");
+        
+        match redis::cmd("BRPOP").arg("messages").arg(1).query::<Option<(String, String)>>(&mut conn) {
+            Ok(Some((_, message))) => {
+                info!("Received message from Redis: {:?}", message);
+                Ok(Some(message))
+            }
+            Ok(None) => {
+                info!("No message available");
+                Ok(None)
+            }
+            Err(e) => {
+                info!("Error popping message: {:?}", e);
+                Err(e)
+            }
+        }
     }
 }

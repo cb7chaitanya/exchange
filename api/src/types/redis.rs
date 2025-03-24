@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum MessageFromOrderbook {
     #[serde(rename = "DEPTH")]
@@ -22,35 +22,35 @@ pub enum MessageFromOrderbook {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DepthPayload {
     pub market: String,
     pub bids: Vec<[String; 2]>,
     pub asks: Vec<[String; 2]>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Fill {
     pub price: String,
     pub qty: f64,
     pub trade_id: i64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OrderPlacedPayload {
     pub order_id: String,
     pub executed_qty: f64,
     pub fills: Vec<Fill>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OrderCancelledPayload {
     pub order_id: String,
     pub executed_qty: f64,
     pub remaining_qty: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OpenOrder {
     pub order_id: String,
     pub executed_qty: f64,
@@ -68,7 +68,7 @@ pub enum OrderSide {
     Sell,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum MessageToEngine {
     #[serde(rename = "CREATE_ORDER")]
@@ -93,7 +93,7 @@ pub enum MessageToEngine {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CreateOrderData {
     pub market: String,
     pub price: String,
@@ -103,25 +103,25 @@ pub struct CreateOrderData {
     pub user_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CancelOrderData {
     pub order_id: String,
     pub market: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OnRampData {
     pub amount: String,
     pub user_id: String,
     pub txn_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetDepthData {
     pub market: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetOpenOrdersData {
     pub user_id: String,
     pub market: String,

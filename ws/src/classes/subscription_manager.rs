@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
-use redis::{Client, RedisResult};
+use redis::Client;
 use serde_json::Value;
-use crate::classes::user::User;
 
 pub struct SubscriptionManager {
     subscriptions: HashMap<String, Vec<String>>,         // userId -> [subscriptions]

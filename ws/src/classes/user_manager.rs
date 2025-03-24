@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::channel;
 use once_cell::sync::Lazy;
-use warp::ws::{Message, WebSocket};
-use rand::{thread_rng, Rng, distributions::Alphanumeric};
+use warp::ws::WebSocket;
+use rand::{Rng, distributions::Alphanumeric};
 use crate::classes::{user::User, subscription_manager::SubscriptionManager};
 
 pub struct UserManager {

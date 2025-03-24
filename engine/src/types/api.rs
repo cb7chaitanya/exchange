@@ -4,8 +4,8 @@ use crate::trade::orderbook::Order;
 use crate::trade::orderbook::Fill;
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
 pub enum MessageFromApi {
     #[serde(rename = "CREATE_ORDER")]
     CreateOrder {
@@ -32,24 +32,32 @@ pub enum MessageFromApi {
     
     #[serde(rename = "GET_DEPTH")]
     GetDepth {
-        market: String,
-        user_id: String,
+        data: GetDepthData,
     },
     
     #[serde(rename = "GET_OPEN_ORDERS")]
     GetOpenOrders {
-        user_id: String,
-        market: String,
+        data: GetOpenOrdersData,
     },
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GetDepthData {
+    pub market: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload")]
+pub struct GetOpenOrdersData {
+    pub user_id: String,
+    pub market: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum MessageToApi {
     #[serde(rename = "DEPTH")]
     Depth {
-        bids: Vec<(String, String)>,
-        asks: Vec<(String, String)>,
+        payload: DepthPayload,
     },
 
     #[serde(rename = "ORDER_PLACED")]
@@ -68,6 +76,18 @@ pub enum MessageToApi {
 
     #[serde(rename = "OPEN_ORDERS")]
     OpenOrders {
-        orders: Vec<Order>,
+        payload: Vec<Order>,
     },
+
+    #[serde(rename = "ERROR")]
+    Error {
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepthPayload {
+    pub market: String,
+    pub bids: Vec<(String, String)>,
+    pub asks: Vec<(String, String)>,
 }

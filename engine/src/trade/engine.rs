@@ -4,12 +4,12 @@ use crate::trade::orderbook::{Orderbook, Order, Fill};
 use std::fs;
 use std::env;
 use serde_json;
-use crate::types::api::{MessageFromApi, MessageToApi};
+use crate::types::api::{MessageFromApi, MessageToApi, DepthPayload};
 use crate::redis::redis_manager::RedisManager;
 use crate::redis::redis_manager::{DbMessage, OrderMessage, TradeMessage, OrderSide};
 use rand::{thread_rng, Rng, distributions::Alphanumeric};
 use crate::types::ws::{WsMessage, WsMessageData, TradeData, DepthData};
-
+use log::info;
 pub const BASE_CURRENCY: &str = "INR";
 
 
@@ -94,7 +94,7 @@ impl Engine {
         }
     }
 
-    pub fn process(&mut self, message: MessageFromApi) {
+    pub fn process(&mut self, message: MessageFromApi, client_id: String) {
         match message {
             MessageFromApi::CreateOrder { market, price, quantity, side, user_id } => {
                 match self.create_order(&market, &price, &quantity, side, &user_id) {
@@ -158,13 +158,48 @@ impl Engine {
                 }
             }
 
-            MessageFromApi::GetOpenOrders { market, user_id } => {
-                if let Some(orderbook) = self.orderbooks.iter().find(|o| o.ticker() == market) {
-                    let orders = orderbook.get_open_orders(&user_id);
-                    RedisManager::get_instance().lock().unwrap().send_to_api(
-                        &user_id,
-                        MessageToApi::OpenOrders { orders }
-                    ).unwrap();
+            MessageFromApi::GetOpenOrders { data } => {
+                info!("Getting open orders for market: {:?}", data.market);
+                if let Some(orderbook) = self.orderbooks.iter().find(|o| o.ticker() == data.market) {
+                    let orders = orderbook.get_open_orders(&data.user_id);
+                    info!("Found orders: {:?}", orders);
+                    {
+                        info!("About to attempt Redis lock");
+                        match RedisManager::get_instance().lock() {
+                            Ok(redis) => {
+                                info!("Successfully got Redis lock");
+                                match redis.send_to_api(
+                                    &client_id,
+                                    MessageToApi::OpenOrders {
+                                        payload: orders
+                                    }
+                                ) {
+                                    Ok(_) => info!("Successfully sent orders to API"),
+                                    Err(e) => info!("Failed to send orders to API: {:?}", e),
+                                }
+                            },
+                            Err(e) => info!("Failed to get Redis lock: {:?}", e),
+                        }
+                    }
+                } else {
+                    info!("No orderbook found for market: {}", data.market);
+                    {
+                        info!("About to attempt Redis lock for empty response");
+                        match RedisManager::get_instance().lock() {
+                            Ok(redis) => {
+                                info!("Successfully got Redis lock");
+                                if let Err(e) = redis.send_to_api(
+                                    &client_id,
+                                    MessageToApi::OpenOrders {
+                                        payload: Vec::new()
+                                    }
+                                ) {
+                                    info!("Failed to send empty orders to API: {:?}", e);
+                                }
+                            },
+                            Err(e) => info!("Failed to get Redis lock: {:?}", e),
+                        }
+                    }
                 }
             }
 
@@ -173,24 +208,56 @@ impl Engine {
                 self.on_ramp(&user_id, amount);
             }
 
-            MessageFromApi::GetDepth { market, user_id } => {
-                if let Some(orderbook) = self.orderbooks.iter().find(|o| o.ticker() == market) {
+            MessageFromApi::GetDepth { data } => {
+                info!("Getting depth for market: {:?}", data.market);
+                if let Some(orderbook) = self.orderbooks.iter().find(|o| o.ticker() == data.market) {
                     let depth = orderbook.get_depth();
-                    RedisManager::get_instance().lock().unwrap().send_to_api(
-                        &user_id,
-                        MessageToApi::Depth {
-                            bids: depth.bids,
-                            asks: depth.asks,
+                    info!("Depth: {:?}", depth);
+                    {
+                        info!("About to attempt Redis lock");
+                        match RedisManager::get_instance().lock() {
+                            Ok(redis) => {
+                                info!("Successfully got Redis lock");
+                                match redis.send_to_api(
+                                    &client_id,
+                                    MessageToApi::Depth {
+                                        payload: DepthPayload {
+                                            market: data.market,
+                                            bids: depth.bids,
+                                            asks: depth.asks,
+                                        }
+                                    }
+                                ) {
+                                    Ok(_) => info!("Successfully sent depth to API"),
+                                    Err(e) => info!("Failed to send depth to API: {:?}", e),
+                                }
+                            },
+                            Err(e) => info!("Failed to get Redis lock: {:?}", e),
                         }
-                    ).unwrap();
+                    } 
+                    
                 } else {
-                    RedisManager::get_instance().lock().unwrap().send_to_api(
-                        &user_id,
-                        MessageToApi::Depth {
+                    info!("No orderbook found for market: {:?}", data.market);
+                    let message = MessageToApi::Depth {
+                        payload: DepthPayload {
+                            market: data.market,
                             bids: Vec::new(),
                             asks: Vec::new(),
+                        },
+                    };
+                    
+                    {
+                        info!("About to attempt Redis lock for empty response");
+                        match RedisManager::get_instance().lock() {
+                            Ok(redis) => {
+                                info!("Successfully got Redis lock");
+                                if let Err(e) = redis.send_to_api(&client_id, message) {
+                                    info!("Failed to send empty depth to API: {:?}", e);
+                                }
+                            },
+                            Err(e) => info!("Failed to get Redis lock: {:?}", e),
                         }
-                    ).unwrap();
+                    }
                 }
             }
         }

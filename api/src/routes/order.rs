@@ -19,14 +19,14 @@ pub struct OpenOrdersQuery {
 }
 
 pub async fn get_open_orders(
-    user_id: String,
+    user_id: web::ReqData<String>,
     query: web::Query<OpenOrdersQuery>,
 ) -> impl Responder {
     let redis_manager = RedisManager::get_instance().lock().unwrap();
     
     let message = MessageToEngine::GetOpenOrders {
         data: GetOpenOrdersData {
-            user_id,
+            user_id: user_id.into_inner(),
             market: query.market.clone(),
         }
     };

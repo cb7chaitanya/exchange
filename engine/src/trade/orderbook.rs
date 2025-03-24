@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::redis::redis_manager::OrderSide;
-
+use log::info;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fill {
     pub qty: f64,
@@ -88,7 +88,7 @@ impl Orderbook {
     pub fn get_depth(&self) -> OrderbookSnapshot {
         let mut bids: Vec<(String, String)> = Vec::new();
         let mut asks: Vec<(String, String)> = Vec::new();
-
+        info!("Getting depth for market: {:?}", self.base_asset);
         // Aggregate bids at same price level
         for bid in &self.bids {
             let price = bid.price.to_string();
@@ -101,7 +101,7 @@ impl Orderbook {
                 }
             }
         }
-
+        info!("Bids: {:?}", bids);
         // Aggregate asks at same price level
         for ask in &self.asks {
             let price = ask.price.to_string();
@@ -114,12 +114,13 @@ impl Orderbook {
                 }
             }
         }
-
+        info!("Asks: {:?}", asks);
         // Sort bids in descending order (highest price first)
         bids.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         // Sort asks in ascending order (lowest price first)
         asks.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
+        info!("Sorted bids: {:?}", bids);
+        info!("Sorted asks: {:?}", asks); 
         OrderbookSnapshot { bids, asks }
     }
 
