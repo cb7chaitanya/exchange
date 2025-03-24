@@ -27,42 +27,11 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        let mut snapshot: Option<String> = None;
-        
-        if env::var("WITH_SNAPSHOT").is_ok() {
-            match fs::read_to_string("./snapshot.json") {
-                Ok(contents) => snapshot = Some(contents),
-                Err(_) => println!("No snapshot found"),
-            }
-        }
-
-        let mut engine = if let Some(snapshot_str) = snapshot {
-            match serde_json::from_str::<serde_json::Value>(&snapshot_str) {
-                Ok(snapshot_data) => {
-                    let orderbooks = snapshot_data["orderbooks"]
-                        .as_array()
-                        .unwrap_or(&Vec::new())
-                        .iter()
-                        .map(|o| Orderbook::new(
-                            o["baseAsset"].as_str().unwrap_or("TATA").to_string(),
-                        ))
-                        .collect();
-
-                    Self {
-                        orderbooks,
-                        balances: HashMap::new(),
-                    }
-                }
-                Err(_) => Self {
-                    orderbooks: vec![Orderbook::new("TATA".to_string())],
-                    balances: HashMap::new(),
-                }
-            }
-        } else {
-            Self {
-                orderbooks: vec![Orderbook::new("TATA".to_string())],
-                balances: HashMap::new(),
-            }
+        let mut engine = Self {
+            orderbooks: vec![
+                Orderbook::new("SOL".to_string()),  // Initialize SOL orderbook
+            ],
+            balances: HashMap::new(),
         };
 
         engine.set_base_balances();
@@ -80,27 +49,41 @@ impl Engine {
     }
 
     fn set_base_balances(&mut self) {
-        for user_id in ["1", "2", "5"].iter() {
+        // Remove hardcoded user IDs
+        // self.balances is now empty by default and will be populated as needed
+    }
+
+    // Add method to ensure user has balance
+    fn ensure_user_balance(&mut self, user_id: &str) {
+        if !self.balances.contains_key(user_id) {
+            info!("Creating new balance for user: {}", user_id);
             let mut user_balance = HashMap::new();
-            user_balance.insert(BASE_CURRENCY.to_string(), UserBalance {
-                available: 10_000_000.0,
-                locked: 0.0,
-            });
-            user_balance.insert("TATA".to_string(), UserBalance {
-                available: 10_000_000.0,
-                locked: 0.0,
-            });
+            
+            // Add all required currencies
+            for currency in ["SOL", "USDC", "INR"].iter() {
+                user_balance.insert(currency.to_string(), UserBalance {
+                    available: 10_000_000.0,
+                    locked: 0.0,
+                });
+            }
+            
             self.balances.insert(user_id.to_string(), user_balance);
+            info!("Created balances for currencies: SOL, USDC, INR");
         }
     }
 
-    pub fn process(&mut self, message: MessageFromApi, client_id: String) {
+    // Add helper method to get market base asset
+    fn get_base_asset(market: &str) -> &str {
+        market.split('_').next().unwrap_or("TATA")
+    }
+
+    pub fn process(&mut self, message: MessageFromApi, client_id: String, user_id: String) {
         match message {
-            MessageFromApi::CreateOrder { market, price, quantity, side, user_id } => {
-                match self.create_order(&market, &price, &quantity, side, &user_id) {
+            MessageFromApi::CreateOrder { data } => {
+                match self.create_order(&data.market, &data.price, &data.quantity, data.side, &user_id) {
                     Ok((executed_qty, fills, order_id)) => {
                         RedisManager::get_instance().lock().unwrap().send_to_api(
-                            &user_id,
+                            &client_id,
                             MessageToApi::OrderPlaced {
                                 order_id,
                                 executed_qty,
@@ -109,13 +92,11 @@ impl Engine {
                         ).unwrap();
                     }
                     Err(e) => {
-                        println!("{}", e);
+                        info!("Order error: {}", e);
                         RedisManager::get_instance().lock().unwrap().send_to_api(
-                            &user_id,
-                            MessageToApi::OrderCancelled {
-                                order_id: String::new(),
-                                executed_qty: 0.0,
-                                remaining_qty: 0.0,
+                            &client_id,
+                            MessageToApi::Error {
+                                message: e,
                             }
                         ).unwrap();
                     }
@@ -276,12 +257,14 @@ impl Engine {
         side: OrderSide,
         user_id: &str,
     ) -> Result<(f64, Vec<Fill>, String), String> {
-        // First validate and parse inputs
-        let price_val = price.parse::<f64>().map_err(|_| "Invalid price")?;
-        let quantity_val = quantity.parse::<f64>().map_err(|_| "Invalid quantity")?;
-        let base_asset = market.split('_').next().unwrap_or("TATA");
+        info!("Creating order for market: {:?}, price: {:?}, quantity: {:?}, side: {:?}, user_id: {:?}", market, price, quantity, side, user_id);
+        
+        self.ensure_user_balance(user_id);
+        
+        let base_asset = Self::get_base_asset(market);
         let quote_asset = market.split('_').nth(1).unwrap_or(BASE_CURRENCY);
 
+        // Check funds first
         self.check_and_lock_funds(
             base_asset,
             quote_asset,
@@ -290,6 +273,12 @@ impl Engine {
             price,
             quantity,
         )?;
+
+        // Then find orderbook
+        let orderbook = self.orderbooks
+            .iter_mut()
+            .find(|o| o.ticker() == base_asset)
+            .ok_or_else(|| format!("No orderbook found for {}", base_asset))?;
 
         // Generate order ID
         let order_id: String = thread_rng()
@@ -300,18 +289,13 @@ impl Engine {
 
         // Create and process order
         let mut order = Order {
-            price: price_val,
-            quantity: quantity_val,
+            price: price.parse::<f64>().map_err(|_| "Invalid price")?,
+            quantity: quantity.parse::<f64>().map_err(|_| "Invalid quantity")?,
             order_id: order_id.clone(),
             filled: 0.0,
             side: side.clone(),
             user_id: user_id.to_string(),
         };
-
-        let orderbook = self.orderbooks
-            .iter_mut()
-            .find(|o| o.ticker() == market)
-            .ok_or("No orderbook found")?;
 
         let (fills, executed_qty) = orderbook.add_order(&mut order)?;
 

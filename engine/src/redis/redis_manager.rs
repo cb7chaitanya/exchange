@@ -38,6 +38,7 @@ pub struct OrderMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum OrderSide {
     Buy,
     Sell,

@@ -16,6 +16,7 @@ mod trade;
 #[derive(Debug, Deserialize)]
 struct MessageWrapper {
     client_id: String,
+    user_id: String,
     message: MessageFromApi,
 }
 
@@ -48,7 +49,7 @@ async fn main() {
                     Ok(wrapper) => {
                         info!("Processing message: {:?}", wrapper.message);
                         let mut engine = engine.lock().unwrap();
-                        engine.process(wrapper.message, wrapper.client_id);
+                        engine.process(wrapper.message, wrapper.client_id, wrapper.user_id);
                     }
                     Err(e) => {
                         info!("Failed to parse message: {:?}", e);

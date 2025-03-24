@@ -9,11 +9,7 @@ use crate::trade::orderbook::Fill;
 pub enum MessageFromApi {
     #[serde(rename = "CREATE_ORDER")]
     CreateOrder {
-        market: String,
-        price: String,
-        quantity: String,
-        side: OrderSide,
-        user_id: String,
+        data: CreateOrderData,
     },
     
     #[serde(rename = "CANCEL_ORDER")]
@@ -90,4 +86,12 @@ pub struct DepthPayload {
     pub market: String,
     pub bids: Vec<(String, String)>,
     pub asks: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateOrderData {
+    pub market: String,
+    pub price: String,
+    pub quantity: String,
+    pub side: OrderSide,
 }
