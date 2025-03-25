@@ -63,4 +63,8 @@ impl User {
             }
         }
     }
+
+    pub fn get_subscriptions(&self) -> Vec<String> {
+        self.subscriptions.iter().cloned().collect()
+    }
 }

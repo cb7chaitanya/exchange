@@ -4,6 +4,7 @@ use crate::classes::user_manager::UserManager;
 use dotenv::dotenv;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use log::info;
 mod classes;
 
 #[tokio::main]
@@ -27,10 +28,10 @@ async fn main() {
             ws.on_upgrade(move |websocket| async move {
                 let mut manager = manager.lock().await;
                 let user_id = manager.add_user(websocket).await;
-                println!("New connection: {}", user_id);
+                info!("New connection: {}", user_id);
             })
         });
 
-    println!("WebSocket server starting on port {}", port);
+    info!("WebSocket server starting on port {}", port);
     warp::serve(ws_route).run(addr).await;
 }

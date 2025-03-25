@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::trade::orderbook::{Orderbook, Order, Fill};
 use std::fs;
-use std::env;
 use serde_json;
 use crate::types::api::{MessageFromApi, MessageToApi, DepthPayload};
 use crate::redis::redis_manager::RedisManager;

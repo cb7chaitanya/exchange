@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
 use redis::Client;
 use serde_json::Value;
+use log::info;
 
 pub struct SubscriptionManager {
     subscriptions: HashMap<String, Vec<String>>,         // userId -> [subscriptions]
@@ -34,6 +35,7 @@ impl SubscriptionManager {
     }
 
     pub fn subscribe(&mut self, user_id: &str, subscription: String) {
+        info!("Subscribing to {}", subscription);
         // Check if already subscribed
         if let Some(subs) = self.subscriptions.get(user_id) {
             if subs.contains(&subscription) {
@@ -62,6 +64,8 @@ impl SubscriptionManager {
                 .arg(&subscription)
                 .query::<()>(&mut conn);
         }
+
+        info!("Subscribed to {}", subscription);
     }
 
     pub fn unsubscribe(&mut self, user_id: &str, subscription: &str) {
