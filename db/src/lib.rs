@@ -10,6 +10,7 @@ use validator::Validate;
 use diesel::prelude::*;
 use crate::models::{Trade, Order};
 use chrono::{TimeZone, Utc};
+use log::info;
 
 pub mod schema;
 pub mod models;
@@ -63,8 +64,10 @@ pub fn establish_connection_pool() -> DbPool {
 }
 
 pub async fn start_db_processor(pool: DbPool) {
-    let redis_url = env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+    let redis_url = env::var("REDIS_3_URL")
+        .unwrap_or_else(|_| "redis://localhost:6381".to_string());
+
+    info!("Connecting to DB Redis at {:?}", redis_url);
     
     let client = Client::open(redis_url.as_str())
         .expect("Failed to create Redis client");
@@ -84,6 +87,7 @@ pub async fn start_db_processor(pool: DbPool) {
         if let Some(message_str) = result {
             match serde_json::from_str::<DbMessage>(&message_str) {
                 Ok(message) => {
+                    info!("Processing message: {:?}", message);
                     match process_message(message, &pool) {
                         Ok(_) => println!("Successfully processed message"),
                         Err(e) => println!("Error processing message: {}", e),

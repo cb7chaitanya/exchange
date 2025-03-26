@@ -4,7 +4,6 @@ use std::future::{ready, Ready};
 use actix_web::{dev, dev::Service, dev::Transform, Error, HttpResponse, web::Data, HttpMessage};
 use futures_util::future::LocalBoxFuture;
 use db::DbPool;
-use log::info;
 use crate::utils::web_utils::get_user_from_jwt;
 
 pub struct AuthMiddleware<S> {

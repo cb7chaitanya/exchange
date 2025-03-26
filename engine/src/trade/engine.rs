@@ -288,9 +288,13 @@ impl Engine {
         let (fills, executed_qty) = orderbook.add_order(&mut order)?;
 
         self.update_balance(user_id, market, market, &side, &fills, executed_qty)?;
+        info!("Creating db trades");
         self.create_db_trades(&fills, market, user_id);
+        info!("Updating db orders");
         self.update_db_orders(&order, executed_qty, &fills, market);
+        info!("Publishing ws depth updates");
         self.publish_ws_depth_updates(&fills, price.to_string(), &side, market);
+        info!("Publishing ws trades");
         self.publish_ws_trades(&fills, user_id, market);
 
         Ok((executed_qty, fills, order_id))
@@ -343,12 +347,12 @@ impl Engine {
             side: Some(order.side.clone()),
         });
 
-        if let Err(e) = conn.push_message(message) {
+        if let Err(e) = conn.push_message_to_db_processor(message) {
             println!("Failed to push order update: {}", e);
         }
 
         for fill in fills {
-            if let Err(e) = conn.push_message(DbMessage::OrderUpdate(OrderMessage {
+            if let Err(e) = conn.push_message_to_db_processor(DbMessage::OrderUpdate(OrderMessage {
                 order_id: fill.marker_order_id.clone(),
                 executed_qty: fill.qty,
                 market: None,
@@ -362,6 +366,7 @@ impl Engine {
     }
 
     fn create_db_trades(&mut self, fills: &Vec<Fill>, market: &str, user_id: &str) {
+        info!("Fills, {:?}", fills);
         for fill in fills {
             let conn = RedisManager::get_instance().lock().unwrap();
             let quote_qty = fill.qty * fill.price;
@@ -378,7 +383,7 @@ impl Engine {
                 market: market.to_string(),
             });
 
-            if let Err(e) = conn.push_message(message) {
+            if let Err(e) = conn.push_message_to_db_processor(message) {
                 println!("Failed to push trade update: {}", e);
             }
         }
@@ -399,7 +404,7 @@ impl Engine {
                 }),
             };
 
-            if let Err(e) = conn.publish_message(&format!("trade@{}", market), message) {
+            if let Err(e) = conn.publish_message_to_ws(&format!("trade@{}", market), message) {
                 println!("Failed to publish trade update: {}", e);
             }
         }
@@ -465,7 +470,7 @@ impl Engine {
 
         println!("publish ws depth updates");
         let conn = RedisManager::get_instance().lock().unwrap();
-        if let Err(e) = conn.publish_message(&format!("depth@{}", market), message) {
+        if let Err(e) = conn.publish_message_to_ws(&format!("depth@{}", market), message) {
             println!("Failed to publish depth update: {}", e);
         }
     }

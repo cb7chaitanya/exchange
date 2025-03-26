@@ -52,6 +52,8 @@ static INSTANCE: Lazy<Mutex<RedisManager>> = Lazy::new(|| {
 #[derive(Debug)]
 pub struct RedisManager {
     redis_client: Client,
+    ws_client: Client,
+    db_client: Client,
 }
 
 impl RedisManager {
@@ -59,17 +61,33 @@ impl RedisManager {
         info!("Initializing new RedisManager");
         dotenv().ok();
         
-        let redis_url = env::var("REDIS_URL")
+        let redis_url = env::var("REDIS_1_URL")
             .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+        
+        let ws_url = env::var("REDIS_2_URL")
+            .unwrap_or_else(|_| "redis://localhost:6380".to_string());
+            
+        let db_url = env::var("REDIS_3_URL")
+            .unwrap_or_else(|_| "redis://localhost:6381".to_string());
         
         info!("Connecting to Redis at {}", redis_url);
         let redis_client = Client::open(redis_url.as_str())
             .expect("Failed to create Redis client");
             
-        info!("Successfully created Redis client");
+        info!("Connecting to WS Redis at {:?}", ws_url);
+        let ws_client = Client::open(ws_url.as_str())
+            .expect("Failed to create WS Redis client");
+            
+        info!("Connecting to DB Redis at {:?}", db_url);
+        let db_client = Client::open(db_url.as_str())
+            .expect("Failed to create DB Redis client");
+            
+        info!("Successfully created Redis clients");
         
         Self {
             redis_client,
+            ws_client,
+            db_client,
         }
     }
 
@@ -80,13 +98,13 @@ impl RedisManager {
 
     pub fn push_message(&self, message: DbMessage) -> RedisResult<()> {
         let message_json = serde_json::to_string(&message).unwrap();
-        let mut conn = self.redis_client.get_connection()?;
+        let mut conn = self.db_client.get_connection()?;
         conn.lpush("db_processor", message_json)
     }
 
     pub fn publish_message(&self, channel: &str, message: WsMessage) -> RedisResult<()> {
         let message_json = serde_json::to_string(&message).unwrap();
-        let mut conn = self.redis_client.get_connection()?;
+        let mut conn = self.ws_client.get_connection()?;
         conn.publish(channel, message_json)
     }
 
@@ -115,12 +133,26 @@ impl RedisManager {
             Ok(result) => {
                 info!("Successfully published to Redis, result: {:?}", result);
                 Ok(result)
-            },
+            },  
             Err(e) => {
                 info!("Failed to publish to Redis: {:?}", e);
                 Err(e)
             }
         }
+    }
+
+    pub fn push_message_to_db_processor(&self, message: DbMessage) -> RedisResult<()> {
+        info!("Pushing message to DB processor");
+        let message_json = serde_json::to_string(&message).unwrap();
+        let mut conn = self.db_client.get_connection()?;
+        conn.lpush("db_processor", message_json)
+    }
+
+    pub fn publish_message_to_ws(&self, channel: &str, message: WsMessage) -> RedisResult<()> {
+        info!("Publishing message to WS");
+        let message_json = serde_json::to_string(&message).unwrap();
+        let mut conn = self.ws_client.get_connection()?;
+        conn.publish(channel, message_json)
     }
 
     pub fn pop_message(&self) -> redis::RedisResult<Option<String>> {

@@ -17,8 +17,8 @@ static INSTANCE: Lazy<Arc<Mutex<SubscriptionManager>>> = Lazy::new(|| {
 
 impl SubscriptionManager {
     fn new() -> Self {
-        let redis_url = std::env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+        let redis_url = std::env::var("REDIS_2_URL")
+            .unwrap_or_else(|_| "redis://localhost:6380".to_string());
             
         let redis_client = Client::open(redis_url)
             .expect("Failed to create Redis client");
