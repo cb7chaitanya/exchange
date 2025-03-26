@@ -94,7 +94,9 @@ impl Orderbook {
             if executed_qty == order.quantity {
                 Ok((fills, executed_qty))
             } else {
-                self.bids.insert(Price(order.price), vec![order.clone()]);
+                self.bids.entry(Price(order.price))
+                    .and_modify(|bids| bids.push(order.clone()))
+                    .or_insert_with(|| vec![order.clone()]);
                 Ok((fills, executed_qty))
             }
         } else {
@@ -103,7 +105,9 @@ impl Orderbook {
             if executed_qty == order.quantity {
                 Ok((fills, executed_qty))
             } else {
-                self.asks.insert(Price(order.price), vec![order.clone()]);
+                self.asks.entry(Price(order.price))
+                    .and_modify(|asks| asks.push(order.clone()))
+                    .or_insert_with(|| vec![order.clone()]);
                 Ok((fills, executed_qty))
             }
         }
@@ -156,33 +160,54 @@ impl Orderbook {
     pub fn match_ask(&mut self, order: &Order) -> Result<(Vec<Fill>, f64), String> {
         let mut fills = Vec::new();
         let mut executed_qty = 0.0;
-
-        for (price, bids) in self.bids.iter_mut() {
+        
+        // Create a list of price levels to process, sorted by price (highest first)
+        let mut price_levels: Vec<Price> = self.bids.keys().cloned().collect();
+        price_levels.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap()); // Sort in descending order
+        
+        for price in price_levels {
             if price.0 >= order.price && executed_qty < order.quantity {
-                let amount_remaining = f64::min(
-                    order.quantity - executed_qty,
-                    bids.iter().map(|b| b.quantity - b.filled).sum::<f64>()
-                );
-                
-                executed_qty += amount_remaining;
-                for bid in bids.iter_mut() {
-                    if bid.user_id != order.user_id {
-                        bid.filled += amount_remaining;
-                        fills.push(Fill {
-                            price: price.0,
-                            qty: amount_remaining,
-                            trade_id: {
-                                self.last_trade_id += 1;
-                                self.last_trade_id
-                            },
-                            other_user_id: bid.user_id.clone(),
-                            marker_order_id: bid.order_id.clone(),
-                        });
+                if let Some(bids) = self.bids.get_mut(&price) {
+                    let remaining_to_fill = order.quantity - executed_qty;
+                    let mut filled_at_this_level = 0.0;
+                    
+                    // Process each bid at this price level
+                    for bid in bids.iter_mut() {
+                        if bid.user_id != order.user_id {
+                            let bid_remaining = bid.quantity - bid.filled;
+                            if bid_remaining > 0.0 {
+                                let fill_qty = f64::min(remaining_to_fill - filled_at_this_level, bid_remaining);
+                                
+                                if fill_qty > 0.0 {
+                                    bid.filled += fill_qty;
+                                    filled_at_this_level += fill_qty;
+                                    
+                                    fills.push(Fill {
+                                        price: price.0,
+                                        qty: fill_qty,
+                                        trade_id: {
+                                            self.last_trade_id += 1;
+                                            self.last_trade_id
+                                        },
+                                        other_user_id: bid.user_id.clone(),
+                                        marker_order_id: bid.order_id.clone(),
+                                    });
+                                    
+                                    if filled_at_this_level >= remaining_to_fill {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
+                    
+                    executed_qty += filled_at_this_level;
                 }
             }
         }
-        self.bids.retain(|&price, bids| {
+        
+        // Clean up filled orders
+        self.bids.retain(|_price, bids| {
             bids.retain(|bid| bid.filled < bid.quantity);
             !bids.is_empty()
         });
@@ -194,45 +219,57 @@ impl Orderbook {
         let mut fills = Vec::new();
         let mut executed_qty = 0.0;
 
-        // Collect asks to remove to avoid borrow checker issues
-        let mut asks_to_remove = Vec::new();
-
-        for (price, asks) in self.asks.iter_mut() {
+        // Create a list of price levels to process, sorted by price (lowest first)
+        let mut price_levels: Vec<Price> = self.asks.keys().cloned().collect();
+        price_levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap()); // Sort in ascending order
+        
+        for price in price_levels {
             if price.0 <= order.price && executed_qty < order.quantity {
-                let available_qty = asks.iter().map(|a| a.quantity - a.filled).sum::<f64>();
-                let filled_qty = f64::min(order.quantity - executed_qty, available_qty);
-                
-                if filled_qty > 0.0 {
-                    executed_qty += filled_qty;
+                if let Some(asks) = self.asks.get_mut(&price) {
+                    let remaining_to_fill = order.quantity - executed_qty;
+                    let mut filled_at_this_level = 0.0;
+                    
+                    // Process each ask at this price level
                     for ask in asks.iter_mut() {
                         if ask.user_id != order.user_id {
-                            ask.filled += filled_qty;
-                            fills.push(Fill {
-                                price: price.0,
-                                qty: filled_qty,
-                                trade_id: {
-                                    self.last_trade_id += 1;
-                                    self.last_trade_id
-                                },
-                                other_user_id: ask.user_id.clone(),
-                                marker_order_id: ask.order_id.clone(),
-                            });
+                            let ask_remaining = ask.quantity - ask.filled;
+                            if ask_remaining > 0.0 {
+                                let fill_qty = f64::min(remaining_to_fill - filled_at_this_level, ask_remaining);
+                                
+                                if fill_qty > 0.0 {
+                                    ask.filled += fill_qty;
+                                    filled_at_this_level += fill_qty;
+                                    
+                                    fills.push(Fill {
+                                        price: price.0,
+                                        qty: fill_qty,
+                                        trade_id: {
+                                            self.last_trade_id += 1;
+                                            self.last_trade_id
+                                        },
+                                        other_user_id: ask.user_id.clone(),
+                                        marker_order_id: ask.order_id.clone(),
+                                    });
+                                    
+                                    if filled_at_this_level >= remaining_to_fill {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
-
-                    // If all orders at this price level are filled, mark for removal
-                    if asks.iter().all(|ask| ask.filled >= ask.quantity) {
-                        asks_to_remove.push(*price);
-                    }
+                    
+                    executed_qty += filled_at_this_level;
                 }
             }
         }
-
-        // Remove filled price levels
-        for price in asks_to_remove {
-            self.asks.remove(&price);
-        }
-
+        
+        // Clean up filled orders
+        self.asks.retain(|_price, asks| {
+            asks.retain(|ask| ask.filled < ask.quantity);
+            !asks.is_empty()
+        });
+        
         Ok((fills, executed_qty))
     }
 
@@ -256,5 +293,207 @@ impl Orderbook {
             asks.retain(|ask| ask.order_id != order_id);
         });
         Ok(price)                           
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::trade::orderbook::{OrderSide, Order};
+    use rand::thread_rng;
+    use rand::distributions::{Alphanumeric, DistString};
+
+    fn generate_order_id() -> String {
+        Alphanumeric.sample_string(&mut thread_rng(), 24)
+    }
+
+    #[test]
+    fn test_add_bid_order() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        let mut order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 10.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+
+        let (fills, executed_qty) = orderbook.add_order(&mut order).unwrap();
+        assert_eq!(fills.len(), 0);
+        assert_eq!(executed_qty, 0.0);
+        assert_eq!(orderbook.bids.len(), 1);
+        assert_eq!(orderbook.asks.len(), 0);
+    }
+
+    #[test]
+    fn test_add_ask_order() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        let mut order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 10.0,
+            filled: 0.0,
+            side: OrderSide::Sell,
+        };
+
+        let (fills, executed_qty) = orderbook.add_order(&mut order).unwrap();
+        assert_eq!(fills.len(), 0);
+        assert_eq!(executed_qty, 0.0);
+        assert_eq!(orderbook.bids.len(), 0);
+        assert_eq!(orderbook.asks.len(), 1);
+    }
+
+    #[test]
+    fn test_match_orders_different_users() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        
+        // Add a buy order
+        let mut buy_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut buy_order).unwrap();
+        assert_eq!(fills.len(), 0);
+        assert_eq!(executed_qty, 0.0);
+        
+        // Add a matching sell order from a different user
+        let mut sell_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user2".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Sell,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut sell_order).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert_eq!(executed_qty, 5.0);
+        assert_eq!(orderbook.bids.len(), 0); // Buy order should be fully matched and removed
+        assert_eq!(orderbook.asks.len(), 0); // Sell order should be fully matched and not added
+    }
+
+    #[test]
+    fn test_match_orders_same_user() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        
+        // Add a buy order
+        let mut buy_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut buy_order).unwrap();
+        assert_eq!(fills.len(), 0);
+        assert_eq!(executed_qty, 0.0);
+        
+        // Add a matching sell order from the same user
+        let mut sell_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Sell,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut sell_order).unwrap();
+        assert_eq!(fills.len(), 0); // No fills because same user
+        assert_eq!(executed_qty, 0.0);
+        assert_eq!(orderbook.bids.len(), 1); // Buy order should remain
+        assert_eq!(orderbook.asks.len(), 1); // Sell order should be added
+    }
+
+    #[test]
+    fn test_partial_match() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        
+        // Add a buy order
+        let mut buy_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 10.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut buy_order).unwrap();
+        assert_eq!(fills.len(), 0);
+        assert_eq!(executed_qty, 0.0);
+        
+        // Add a smaller matching sell order
+        let mut sell_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user2".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Sell,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut sell_order).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert_eq!(executed_qty, 5.0);
+        assert_eq!(orderbook.bids.len(), 1); // Buy order should remain with reduced quantity
+        assert_eq!(orderbook.asks.len(), 0); // Sell order should be fully matched and not added
+        
+        // Check remaining buy order quantity
+        let remaining_qty = orderbook.bids.values().next().unwrap()[0].quantity - orderbook.bids.values().next().unwrap()[0].filled;
+        assert_eq!(remaining_qty, 5.0);
+    }
+
+    #[test]
+    fn test_price_priority() {
+        let mut orderbook = Orderbook::new("TEST_MARKET".to_string());
+        
+        // Add buy orders at different prices
+        let mut buy_order1 = Order {
+            order_id: generate_order_id(),
+            user_id: "user1".to_string(),
+            price: 100.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+        
+        let mut buy_order2 = Order {
+            order_id: generate_order_id(),
+            user_id: "user2".to_string(),
+            price: 102.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Buy,
+        };
+        
+        orderbook.add_order(&mut buy_order1).unwrap();
+        orderbook.add_order(&mut buy_order2).unwrap();
+        
+        // Add a matching sell order
+        let mut sell_order = Order {
+            order_id: generate_order_id(),
+            user_id: "user3".to_string(),
+            price: 99.0,
+            quantity: 5.0,
+            filled: 0.0,
+            side: OrderSide::Sell,
+        };
+        
+        let (fills, executed_qty) = orderbook.add_order(&mut sell_order).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert_eq!(executed_qty, 5.0);
+        assert_eq!(fills[0].price, 102.0); // Should match with the higher priced buy order
+        assert_eq!(orderbook.bids.len(), 1); // Only the lower priced buy order should remain
     }
 }
