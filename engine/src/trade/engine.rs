@@ -26,14 +26,16 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Self {
+        info!("Initializing engine with SOL_USDC orderbook");
         let mut engine = Self {
             orderbooks: vec![
-                Orderbook::new("SOL".to_string()),  // Initialize SOL orderbook
+                Orderbook::new("SOL_USDC".to_string()),
             ],
             balances: HashMap::new(),
         };
 
         engine.set_base_balances();
+        info!("Engine initialized with orderbooks: {:?}", engine.orderbooks.iter().map(|ob| ob.ticker()).collect::<Vec<_>>());
         engine
     }
 
@@ -71,9 +73,9 @@ impl Engine {
         }
     }
 
-    // Add helper method to get market base asset
+    // Update get_base_asset to handle market pairs correctly
     fn get_base_asset(market: &str) -> &str {
-        market.split('_').next().unwrap_or("TATA")
+        market  // Return full market name instead of splitting
     }
 
     pub fn process(&mut self, message: MessageFromApi, client_id: String, user_id: String) {
@@ -256,28 +258,15 @@ impl Engine {
         side: OrderSide,
         user_id: &str,
     ) -> Result<(f64, Vec<Fill>, String), String> {
-        info!("Creating order for market: {:?}, price: {:?}, quantity: {:?}, side: {:?}, user_id: {:?}", market, price, quantity, side, user_id);
+        info!("Creating order for market: {:?}", market);
         
         self.ensure_user_balance(user_id);
         
-        let base_asset = Self::get_base_asset(market);
-        let quote_asset = market.split('_').nth(1).unwrap_or(BASE_CURRENCY);
-
-        // Check funds first
-        self.check_and_lock_funds(
-            base_asset,
-            quote_asset,
-            &side,
-            user_id,
-            price,
-            quantity,
-        )?;
-
-        // Then find orderbook
+        // Find orderbook by full market name
         let orderbook = self.orderbooks
             .iter_mut()
-            .find(|o| o.ticker() == base_asset)
-            .ok_or_else(|| format!("No orderbook found for {}", base_asset))?;
+            .find(|o| o.ticker() == market)  // Compare with full market name
+            .ok_or_else(|| format!("No orderbook found for {}", market))?;
 
         // Generate order ID
         let order_id: String = thread_rng()
@@ -298,7 +287,7 @@ impl Engine {
 
         let (fills, executed_qty) = orderbook.add_order(&mut order)?;
 
-        self.update_balance(user_id, base_asset, quote_asset, &side, &fills, executed_qty)?;
+        self.update_balance(user_id, market, market, &side, &fills, executed_qty)?;
         self.create_db_trades(&fills, market, user_id);
         self.update_db_orders(&order, executed_qty, &fills, market);
         self.publish_ws_depth_updates(&fills, price.to_string(), &side, market);

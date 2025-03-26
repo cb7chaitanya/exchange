@@ -19,6 +19,7 @@ pub struct Claims {
 }
 
 pub fn get_user_from_jwt(req: &ServiceRequest, pool: &web::Data<DbPool>) -> Option<User> {
+    info!("Getting user from JWT");
     let cookie = req.cookie("token")?;
     let token = cookie.value();
     let decoding_key = DecodingKey::from_secret(get_jwt_secret().as_bytes());

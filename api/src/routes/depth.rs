@@ -4,6 +4,7 @@ use crate::types::redis::{MessageToEngine, GetDepthData};
 use actix_web::{Responder, HttpResponse};
 use log::info;
 use serde::Deserialize;
+use crate::middlewares::auth::AuthService;
 
 #[derive(Deserialize)]
 pub struct MarketPath {
@@ -13,6 +14,7 @@ pub struct MarketPath {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/depth")
+            .wrap(AuthService::new())
             .route("/{market}", web::get().to(get_depth))
     );
 }

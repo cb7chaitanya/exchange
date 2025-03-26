@@ -92,18 +92,25 @@ impl RedisManager {
 
     pub fn send_to_api(&self, client_id: &str, message: MessageToApi) -> RedisResult<()> {
         info!("Attempting to send message to API for client: {}", client_id);
-        let message_json = serde_json::to_string(&message).unwrap();
-        info!("Serialized message: {}", message_json);
-        let mut conn = match self.redis_client.get_connection() {
-            Ok(conn) => {
-                info!("Got Redis connection successfully");
-                conn
-            },
-            Err(e) => {
-                info!("Failed to get Redis connection: {:?}", e);
-                return Err(e);
-            }
+        
+        // Wrap the message in the expected format
+        let wrapped_message = match &message {
+            MessageToApi::OrderPlaced { order_id, executed_qty, fills } => serde_json::json!({
+                "type": "ORDER_PLACED",
+                "payload": {
+                    "order_id": order_id,
+                    "executed_qty": executed_qty,
+                    "fills": fills
+                }
+            }),
+            // ... handle other message types similarly
+            _ => serde_json::to_value(&message).unwrap()
         };
+
+        let message_json = serde_json::to_string(&wrapped_message).unwrap();
+        info!("Serialized message: {}", message_json);
+        
+        let mut conn = self.redis_client.get_connection()?;
         match conn.publish(client_id, message_json) {
             Ok(result) => {
                 info!("Successfully published to Redis, result: {:?}", result);

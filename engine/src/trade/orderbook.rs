@@ -1,6 +1,26 @@
 use serde::{Deserialize, Serialize};
 use crate::redis::redis_manager::OrderSide;
 use log::info;
+use std::collections::{BTreeMap, HashMap};
+use std::cmp::Ordering;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Price(f64);
+
+impl Eq for Price {}
+
+impl PartialOrd for Price {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl Ord for Price {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Equal)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fill {
     pub qty: f64,
@@ -12,11 +32,12 @@ pub struct Fill {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Orderbook {
-    base_asset: String,
-    pub bids: Vec<Order>,
-    pub asks: Vec<Order>,
+    market: String,
+    pub bids: BTreeMap<Price, Vec<Order>>,
+    pub asks: BTreeMap<Price, Vec<Order>>,
     last_trade_id: i64,
     current_price: f64,
+    orders: HashMap<String, Order>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,26 +57,29 @@ pub struct OrderbookSnapshot {
 }
 
 impl Orderbook {
-    pub fn new(base_asset: String) -> Self {
+    pub fn new(market: String) -> Self {
+        info!("Creating new orderbook for market: {}", market);
         Self {
-            base_asset,
-            bids: Vec::new(),
-            asks: Vec::new(),
+            market,
+            bids: BTreeMap::new(),
+            asks: BTreeMap::new(),
+            orders: HashMap::new(),
             last_trade_id: 0,
             current_price: 0.0,
         }
     }
 
-    pub fn ticker(&self) -> String {
-        format!("{}_INR", self.base_asset)
+    pub fn ticker(&self) -> &str {
+        &self.market  // Return reference to market string
     }
 
     #[allow(dead_code)]
     pub fn get_snapshot(&self) -> Orderbook {
         let snapshot = Orderbook {
-            base_asset: self.base_asset.clone(),
+            market: self.market.clone(),
             bids: self.bids.clone(),
             asks: self.asks.clone(),
+            orders: self.orders.clone(),
             last_trade_id: self.last_trade_id,
             current_price: self.current_price,
         };
@@ -70,7 +94,7 @@ impl Orderbook {
             if executed_qty == order.quantity {
                 Ok((fills, executed_qty))
             } else {
-                self.bids.push(order.clone());
+                self.bids.insert(Price(order.price), vec![order.clone()]);
                 Ok((fills, executed_qty))
             }
         } else {
@@ -79,7 +103,7 @@ impl Orderbook {
             if executed_qty == order.quantity {
                 Ok((fills, executed_qty))
             } else {
-                self.asks.push(order.clone());
+                self.asks.insert(Price(order.price), vec![order.clone()]);
                 Ok((fills, executed_qty))
             }
         }
@@ -88,30 +112,20 @@ impl Orderbook {
     pub fn get_depth(&self) -> OrderbookSnapshot {
         let mut bids: Vec<(String, String)> = Vec::new();
         let mut asks: Vec<(String, String)> = Vec::new();
-        info!("Getting depth for market: {:?}", self.base_asset);
+        info!("Getting depth for market: {:?}", self.market);
         // Aggregate bids at same price level
-        for bid in &self.bids {
-            let price = bid.price.to_string();
-            let remaining = bid.quantity - bid.filled;
+        for (price, orders) in &self.bids {
+            let remaining = orders.iter().map(|o| o.quantity - o.filled).sum::<f64>();
             if remaining > 0.0 {
-                if let Some(existing) = bids.iter_mut().find(|(p, _)| p == &price) {
-                    existing.1 = (existing.1.parse::<f64>().unwrap() + remaining).to_string();
-                } else {
-                    bids.push((price, remaining.to_string()));
-                }
+                bids.push((price.0.to_string(), remaining.to_string()));
             }
         }
         info!("Bids: {:?}", bids);
         // Aggregate asks at same price level
-        for ask in &self.asks {
-            let price = ask.price.to_string();
-            let remaining = ask.quantity - ask.filled;
+        for (price, orders) in &self.asks {
+            let remaining = orders.iter().map(|o| o.quantity - o.filled).sum::<f64>();
             if remaining > 0.0 {
-                if let Some(existing) = asks.iter_mut().find(|(p, _)| p == &price) {
-                    existing.1 = (existing.1.parse::<f64>().unwrap() + remaining).to_string();
-                } else {
-                    asks.push((price, remaining.to_string()));
-                }
+                asks.push((price.0.to_string(), remaining.to_string()));
             }
         }
         info!("Asks: {:?}", asks);
@@ -127,15 +141,13 @@ impl Orderbook {
     pub fn get_open_orders(&self, user_id: &str) -> Vec<Order> {
         let mut orders = Vec::new();
         orders.extend(
-            self.bids
-                .iter()
-                .filter(|o| o.user_id == user_id && o.filled < o.quantity)
+            self.bids.values()
+                .flat_map(|bids| bids.iter().filter(|o| o.user_id == user_id && o.filled < o.quantity))
                 .cloned(),
         );
         orders.extend(
-            self.asks
-                .iter()
-                .filter(|o| o.user_id == user_id && o.filled < o.quantity)
+            self.asks.values()
+                .flat_map(|asks| asks.iter().filter(|o| o.user_id == user_id && o.filled < o.quantity))
                 .cloned(),
         );
         orders
@@ -145,29 +157,35 @@ impl Orderbook {
         let mut fills = Vec::new();
         let mut executed_qty = 0.0;
 
-        for bid in self.bids.iter_mut() {
-            if bid.price >= order.price && executed_qty < order.quantity && bid.user_id != order.user_id {
+        for (price, bids) in self.bids.iter_mut() {
+            if price.0 >= order.price && executed_qty < order.quantity {
                 let amount_remaining = f64::min(
                     order.quantity - executed_qty,
-                    bid.quantity - bid.filled
+                    bids.iter().map(|b| b.quantity - b.filled).sum::<f64>()
                 );
                 
                 executed_qty += amount_remaining;
-                bid.filled += amount_remaining;
-                
-                fills.push(Fill {
-                    price: bid.price,
-                    qty: amount_remaining,
-                    trade_id: {
-                        self.last_trade_id += 1;
-                        self.last_trade_id
-                    },
-                    other_user_id: bid.user_id.clone(),
-                    marker_order_id: bid.order_id.clone(),
-                });
+                for bid in bids.iter_mut() {
+                    if bid.user_id != order.user_id {
+                        bid.filled += amount_remaining;
+                        fills.push(Fill {
+                            price: price.0,
+                            qty: amount_remaining,
+                            trade_id: {
+                                self.last_trade_id += 1;
+                                self.last_trade_id
+                            },
+                            other_user_id: bid.user_id.clone(),
+                            marker_order_id: bid.order_id.clone(),
+                        });
+                    }
+                }
             }
         }
-        self.bids.retain(|bid| bid.filled < bid.quantity);
+        self.bids.retain(|&price, bids| {
+            bids.retain(|bid| bid.filled < bid.quantity);
+            !bids.is_empty()
+        });
         
         Ok((fills, executed_qty))
     }
@@ -176,49 +194,67 @@ impl Orderbook {
         let mut fills = Vec::new();
         let mut executed_qty = 0.0;
 
-        for ask in self.asks.iter_mut() {
-            if ask.price <= order.price && executed_qty < order.quantity && ask.user_id != order.user_id {
-                let filled_qty = f64::min(order.quantity - executed_qty, ask.quantity - ask.filled);
-                executed_qty += filled_qty;
-                ask.filled += filled_qty;
+        // Collect asks to remove to avoid borrow checker issues
+        let mut asks_to_remove = Vec::new();
 
-                fills.push(Fill {
-                    price: ask.price,
-                    qty: filled_qty,
-                    trade_id: {
-                        self.last_trade_id += 1;
-                        self.last_trade_id
-                    },
-                    other_user_id: ask.user_id.clone(),
-                    marker_order_id: ask.order_id.clone(),
-                });
+        for (price, asks) in self.asks.iter_mut() {
+            if price.0 <= order.price && executed_qty < order.quantity {
+                let available_qty = asks.iter().map(|a| a.quantity - a.filled).sum::<f64>();
+                let filled_qty = f64::min(order.quantity - executed_qty, available_qty);
+                
+                if filled_qty > 0.0 {
+                    executed_qty += filled_qty;
+                    for ask in asks.iter_mut() {
+                        if ask.user_id != order.user_id {
+                            ask.filled += filled_qty;
+                            fills.push(Fill {
+                                price: price.0,
+                                qty: filled_qty,
+                                trade_id: {
+                                    self.last_trade_id += 1;
+                                    self.last_trade_id
+                                },
+                                other_user_id: ask.user_id.clone(),
+                                marker_order_id: ask.order_id.clone(),
+                            });
+                        }
+                    }
+
+                    // If all orders at this price level are filled, mark for removal
+                    if asks.iter().all(|ask| ask.filled >= ask.quantity) {
+                        asks_to_remove.push(*price);
+                    }
+                }
             }
-        } 
+        }
 
-        self.asks.retain(|ask| ask.filled < ask.quantity);
+        // Remove filled price levels
+        for price in asks_to_remove {
+            self.asks.remove(&price);
+        }
 
         Ok((fills, executed_qty))
     }
 
     pub fn cancel_bid(&mut self, order_id: &str) -> Result<f64, String> {
-        let index = self.bids
-            .iter()
-            .position(|bid| bid.order_id == order_id)
+        let price = self.bids.iter()
+            .find_map(|(price, bids)| bids.iter().position(|bid| bid.order_id == order_id).map(|_| price.0))
             .ok_or("Order not found")?;
         
-        let price = self.bids[index].price;  
-        self.bids.remove(index);             
+        self.bids.entry(Price(price)).and_modify(|bids| {
+            bids.retain(|bid| bid.order_id != order_id);
+        });
         Ok(price)                            
     }
 
     pub fn cancel_ask(&mut self, order_id: &str) -> Result<f64, String> {
-        let index = self.asks
-            .iter()
-            .position(|ask| ask.order_id == order_id)
+        let price = self.asks.iter()
+            .find_map(|(price, asks)| asks.iter().position(|ask| ask.order_id == order_id).map(|_| price.0))
             .ok_or("Order not found")?;
         
-        let price = self.asks[index].price;  
-        self.asks.remove(index);             
+        self.asks.entry(Price(price)).and_modify(|asks| {
+            asks.retain(|ask| ask.order_id != order_id);
+        });
         Ok(price)                           
     }
 }
